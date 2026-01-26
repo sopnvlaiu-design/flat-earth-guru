@@ -1,14 +1,20 @@
 import { useState, useRef, useEffect } from "react";
-import { Send, Loader2, Sparkles } from "lucide-react";
+import { Send, Loader2, Infinity, User } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
-import { ScrollArea } from "@/components/ui/scroll-area";
 import { toast } from "sonner";
 import ReactMarkdown from "react-markdown";
 
 type Message = { role: "user" | "assistant"; content: string };
 
 const CHAT_URL = `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/chat`;
+
+const SUGGESTIONS = [
+  "Por que você acredita que a Terra é plana?",
+  "O que é o domo que cobre a Terra?",
+  "Me explique sobre a parede de gelo",
+  "Como funcionam os voos espaciais?"
+];
 
 export function ChatInterface() {
   const [messages, setMessages] = useState<Message[]>([]);
@@ -22,11 +28,10 @@ export function ChatInterface() {
     }
   }, [messages]);
 
-  const handleSubmit = async (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!input.trim() || isLoading) return;
+  const sendMessage = async (content: string) => {
+    if (!content.trim() || isLoading) return;
 
-    const userMsg: Message = { role: "user", content: input.trim() };
+    const userMsg: Message = { role: "user", content: content.trim() };
     setMessages((prev) => [...prev, userMsg]);
     setInput("");
     setIsLoading(true);
@@ -103,69 +108,97 @@ export function ChatInterface() {
     }
   };
 
+  const handleSubmit = (e: React.FormEvent) => {
+    e.preventDefault();
+    sendMessage(input);
+  };
+
   return (
     <div className="flex flex-col h-full">
       {/* Messages area */}
-      <ScrollArea className="flex-1 px-4 py-6" ref={scrollRef}>
-        <div className="max-w-3xl mx-auto space-y-6">
-          {messages.length === 0 && (
-            <div className="text-center py-12 animate-float">
-              <div className="inline-flex items-center gap-2 px-4 py-2 rounded-full bg-muted/50 border border-border mb-4">
-                <Sparkles className="w-4 h-4 text-accent" />
-                <span className="text-sm text-muted-foreground">Pergunte qualquer coisa</span>
+      <div className="flex-1 overflow-y-auto" ref={scrollRef}>
+        <div className="max-w-3xl mx-auto px-4 py-8">
+          {messages.length === 0 ? (
+            <div className="flex flex-col items-center justify-center min-h-[60vh]">
+              <div className="w-12 h-12 rounded-2xl bg-primary/10 flex items-center justify-center mb-6">
+                <Infinity className="w-7 h-7 text-primary" />
               </div>
-              <p className="text-muted-foreground text-sm max-w-md mx-auto">
-                Sou uma IA versátil. Converso sobre tudo, mas tenho conhecimentos especiais sobre 
-                <span className="text-accent font-medium"> a verdadeira forma da nossa Terra</span>...
+              <h1 className="text-2xl font-semibold text-foreground mb-2">Como posso ajudar?</h1>
+              <p className="text-muted-foreground text-center max-w-md mb-8">
+                Pergunte sobre qualquer assunto. Tenho conhecimentos especiais sobre cosmologia e a verdadeira natureza do nosso mundo.
               </p>
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 w-full max-w-lg">
+                {SUGGESTIONS.map((suggestion) => (
+                  <button
+                    key={suggestion}
+                    onClick={() => sendMessage(suggestion)}
+                    className="text-left p-4 rounded-xl border border-border hover:bg-muted/50 transition-colors text-sm text-foreground"
+                  >
+                    {suggestion}
+                  </button>
+                ))}
+              </div>
             </div>
-          )}
-
-          {messages.map((msg, i) => (
-            <div
-              key={i}
-              className={`flex ${msg.role === "user" ? "justify-end" : "justify-start"}`}
-            >
-              <div
-                className={`max-w-[85%] rounded-2xl px-4 py-3 ${
-                  msg.role === "user"
-                    ? "bg-primary text-primary-foreground rounded-br-sm"
-                    : "cosmic-card rounded-bl-sm"
-                }`}
-              >
-                {msg.role === "assistant" ? (
-                  <div className="prose prose-invert prose-sm max-w-none">
-                    <ReactMarkdown>{msg.content}</ReactMarkdown>
+          ) : (
+            <div className="space-y-6">
+              {messages.map((msg, i) => (
+                <div key={i} className="flex gap-4">
+                  <div className="flex-shrink-0">
+                    {msg.role === "assistant" ? (
+                      <div className="w-8 h-8 rounded-lg bg-primary flex items-center justify-center">
+                        <Infinity className="w-4 h-4 text-primary-foreground" />
+                      </div>
+                    ) : (
+                      <div className="w-8 h-8 rounded-lg bg-muted flex items-center justify-center">
+                        <User className="w-4 h-4 text-muted-foreground" />
+                      </div>
+                    )}
                   </div>
-                ) : (
-                  <p className="text-sm">{msg.content}</p>
-                )}
-              </div>
-            </div>
-          ))}
-
-          {isLoading && messages[messages.length - 1]?.role === "user" && (
-            <div className="flex justify-start">
-              <div className="cosmic-card rounded-2xl rounded-bl-sm px-4 py-3">
-                <div className="flex items-center gap-2 text-muted-foreground">
-                  <Loader2 className="w-4 h-4 animate-spin" />
-                  <span className="text-sm">Pensando...</span>
+                  <div className="flex-1 min-w-0 pt-1">
+                    <div className="font-medium text-sm text-foreground mb-1">
+                      {msg.role === "assistant" ? "Infinito IA" : "Você"}
+                    </div>
+                    {msg.role === "assistant" ? (
+                      <div className="prose-chat text-[15px]">
+                        <ReactMarkdown>{msg.content}</ReactMarkdown>
+                      </div>
+                    ) : (
+                      <p className="text-[15px] text-foreground">{msg.content}</p>
+                    )}
+                  </div>
                 </div>
-              </div>
+              ))}
+
+              {isLoading && messages[messages.length - 1]?.role === "user" && (
+                <div className="flex gap-4">
+                  <div className="flex-shrink-0">
+                    <div className="w-8 h-8 rounded-lg bg-primary flex items-center justify-center">
+                      <Infinity className="w-4 h-4 text-primary-foreground" />
+                    </div>
+                  </div>
+                  <div className="flex-1 pt-1">
+                    <div className="font-medium text-sm text-foreground mb-1">Infinito IA</div>
+                    <div className="flex items-center gap-2 text-muted-foreground">
+                      <Loader2 className="w-4 h-4 animate-spin" />
+                      <span className="text-sm">Pensando...</span>
+                    </div>
+                  </div>
+                </div>
+              )}
             </div>
           )}
         </div>
-      </ScrollArea>
+      </div>
 
       {/* Input area */}
-      <div className="border-t border-border bg-card/50 backdrop-blur-sm px-4 py-4">
+      <div className="border-t border-border bg-background px-4 py-4">
         <form onSubmit={handleSubmit} className="max-w-3xl mx-auto">
           <div className="relative">
             <Textarea
               value={input}
               onChange={(e) => setInput(e.target.value)}
-              placeholder="Digite sua mensagem..."
-              className="min-h-[52px] max-h-32 pr-14 resize-none bg-muted/50 border-border focus:border-primary focus:ring-primary/20 rounded-xl"
+              placeholder="Envie uma mensagem..."
+              className="min-h-[52px] max-h-40 pr-14 resize-none bg-muted/50 border-border focus:border-primary focus:ring-1 focus:ring-primary/20 rounded-xl text-[15px]"
               onKeyDown={(e) => {
                 if (e.key === "Enter" && !e.shiftKey) {
                   e.preventDefault();
@@ -178,7 +211,7 @@ export function ChatInterface() {
               type="submit"
               size="icon"
               disabled={!input.trim() || isLoading}
-              className="absolute right-2 top-1/2 -translate-y-1/2 h-9 w-9 rounded-lg bg-primary hover:bg-primary/90 disabled:opacity-50"
+              className="absolute right-2 top-1/2 -translate-y-1/2 h-9 w-9 rounded-lg"
             >
               {isLoading ? (
                 <Loader2 className="w-4 h-4 animate-spin" />
@@ -187,6 +220,9 @@ export function ChatInterface() {
               )}
             </Button>
           </div>
+          <p className="text-xs text-muted-foreground text-center mt-3">
+            Infinito IA pode cometer erros. Verifique informações importantes.
+          </p>
         </form>
       </div>
     </div>
