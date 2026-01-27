@@ -1,5 +1,5 @@
 import { useState, useRef, useEffect, useCallback } from "react";
-import { Menu, Infinity, Loader2 } from "lucide-react";
+import { Menu, Infinity, Loader2, Volume2, VolumeX, PanelLeftClose, PanelLeft } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Sheet, SheetContent, SheetTrigger } from "@/components/ui/sheet";
 import { toast } from "sonner";
@@ -7,6 +7,7 @@ import { MessageBubble } from "./chat/MessageBubble";
 import { ChatInput } from "./chat/ChatInput";
 import { HistorySidebar } from "./chat/HistorySidebar";
 import { EmptyState } from "./chat/EmptyState";
+import { useTextToSpeech } from "@/hooks/useTextToSpeech";
 
 type Message = { role: "user" | "assistant"; content: string; image?: string };
 
@@ -34,7 +35,9 @@ export function ChatInterface() {
   const [currentConversationId, setCurrentConversationId] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState(false);
   const [sidebarOpen, setSidebarOpen] = useState(false);
+  const [desktopSidebarOpen, setDesktopSidebarOpen] = useState(false);
   const scrollRef = useRef<HTMLDivElement>(null);
+  const { voiceEnabled, isSpeaking, speak, stop, toggleVoice } = useTextToSpeech();
 
   const currentConversation = conversations.find((c) => c.id === currentConversationId);
   const messages = currentConversation?.messages || [];
@@ -52,6 +55,7 @@ export function ChatInterface() {
   const createNewConversation = useCallback(() => {
     setCurrentConversationId(null);
     setSidebarOpen(false);
+    setDesktopSidebarOpen(false);
   }, []);
 
   const selectConversation = useCallback((id: string) => {
@@ -167,6 +171,11 @@ export function ChatInterface() {
           }
         }
       }
+
+      // Speak the response if voice is enabled
+      if (voiceEnabled && assistantContent) {
+        speak(assistantContent);
+      }
     } catch (error) {
       console.error("Chat error:", error);
       toast.error(error instanceof Error ? error.message : "Erro ao enviar mensagem");
@@ -177,31 +186,67 @@ export function ChatInterface() {
 
   return (
     <div className="flex h-full">
-      {/* Desktop Sidebar */}
-      <div className="hidden md:block w-64 border-r border-border">
+      {/* Desktop Sidebar - Collapsible */}
+      <div
+        className={`hidden md:block border-r border-border transition-all duration-300 ${
+          desktopSidebarOpen ? "w-64" : "w-0"
+        } overflow-hidden`}
+      >
         <HistorySidebar
           conversations={conversations}
           currentId={currentConversationId}
           onSelect={selectConversation}
           onNew={createNewConversation}
-          onClose={() => {}}
+          onClose={() => setDesktopSidebarOpen(false)}
         />
       </div>
 
       {/* Main Chat Area */}
       <div className="flex-1 flex flex-col min-w-0">
-        {/* Mobile Header */}
-        <div className="md:hidden border-b border-border px-4 py-3 flex items-center gap-3">
+        {/* Header */}
+        <div className="border-b border-border px-4 py-3 flex items-center gap-3">
+          {/* Desktop sidebar toggle */}
+          <Button
+            variant="ghost"
+            size="icon"
+            className="hidden md:flex h-9 w-9"
+            onClick={() => setDesktopSidebarOpen(!desktopSidebarOpen)}
+          >
+            {desktopSidebarOpen ? (
+              <PanelLeftClose className="w-5 h-5" />
+            ) : (
+              <PanelLeft className="w-5 h-5" />
+            )}
+          </Button>
+
           <div className="flex items-center gap-2">
             <div className="w-8 h-8 rounded-lg bg-primary flex items-center justify-center">
               <Infinity className="w-5 h-5 text-primary-foreground" />
             </div>
             <span className="font-semibold text-foreground">Infinito IA</span>
           </div>
+
           <div className="flex-1" />
+
+          {/* Voice toggle */}
+          <Button
+            variant={voiceEnabled ? "default" : "ghost"}
+            size="icon"
+            className="h-9 w-9"
+            onClick={toggleVoice}
+            title={voiceEnabled ? "Desativar respostas por voz" : "Ativar respostas por voz"}
+          >
+            {voiceEnabled ? (
+              <Volume2 className={`w-5 h-5 ${isSpeaking ? "animate-pulse" : ""}`} />
+            ) : (
+              <VolumeX className="w-5 h-5" />
+            )}
+          </Button>
+
+          {/* Mobile menu */}
           <Sheet open={sidebarOpen} onOpenChange={setSidebarOpen}>
             <SheetTrigger asChild>
-              <Button variant="ghost" size="icon" className="h-9 w-9">
+              <Button variant="ghost" size="icon" className="md:hidden h-9 w-9">
                 <Menu className="w-5 h-5" />
               </Button>
             </SheetTrigger>
