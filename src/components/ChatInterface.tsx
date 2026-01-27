@@ -1,26 +1,47 @@
-import { useState, useRef, useEffect } from "react";
-import { Send, Loader2, Infinity, User } from "lucide-react";
+import { useState, useRef, useEffect, useCallback } from "react";
+import { Menu, Infinity, Loader2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
-import { Textarea } from "@/components/ui/textarea";
+import { Sheet, SheetContent, SheetTrigger } from "@/components/ui/sheet";
 import { toast } from "sonner";
-import ReactMarkdown from "react-markdown";
+import { MessageBubble } from "./chat/MessageBubble";
+import { ChatInput } from "./chat/ChatInput";
+import { HistorySidebar } from "./chat/HistorySidebar";
+import { EmptyState } from "./chat/EmptyState";
 
-type Message = { role: "user" | "assistant"; content: string };
+type Message = { role: "user" | "assistant"; content: string; image?: string };
+
+interface Conversation {
+  id: string;
+  title: string;
+  timestamp: Date;
+  messages: Message[];
+}
 
 const CHAT_URL = `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/chat`;
 
-const SUGGESTIONS = [
-  "Por que você acredita que a Terra é plana?",
-  "O que é o domo que cobre a Terra?",
-  "Me explique sobre a parede de gelo",
-  "Como funcionam os voos espaciais?"
-];
-
 export function ChatInterface() {
-  const [messages, setMessages] = useState<Message[]>([]);
-  const [input, setInput] = useState("");
+  const [conversations, setConversations] = useState<Conversation[]>(() => {
+    const saved = localStorage.getItem("infinito-conversations");
+    if (saved) {
+      const parsed = JSON.parse(saved);
+      return parsed.map((c: Conversation) => ({
+        ...c,
+        timestamp: new Date(c.timestamp),
+      }));
+    }
+    return [];
+  });
+  const [currentConversationId, setCurrentConversationId] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState(false);
+  const [sidebarOpen, setSidebarOpen] = useState(false);
   const scrollRef = useRef<HTMLDivElement>(null);
+
+  const currentConversation = conversations.find((c) => c.id === currentConversationId);
+  const messages = currentConversation?.messages || [];
+
+  useEffect(() => {
+    localStorage.setItem("infinito-conversations", JSON.stringify(conversations));
+  }, [conversations]);
 
   useEffect(() => {
     if (scrollRef.current) {
@@ -28,24 +49,64 @@ export function ChatInterface() {
     }
   }, [messages]);
 
-  const sendMessage = async (content: string) => {
-    if (!content.trim() || isLoading) return;
+  const createNewConversation = useCallback(() => {
+    setCurrentConversationId(null);
+    setSidebarOpen(false);
+  }, []);
 
-    const userMsg: Message = { role: "user", content: content.trim() };
-    setMessages((prev) => [...prev, userMsg]);
-    setInput("");
+  const selectConversation = useCallback((id: string) => {
+    setCurrentConversationId(id);
+    setSidebarOpen(false);
+  }, []);
+
+  const sendMessage = async (content: string, image?: string) => {
+    if ((!content.trim() && !image) || isLoading) return;
+
+    const userMsg: Message = { role: "user", content: content.trim(), image };
+
+    let conversationId = currentConversationId;
+    let updatedConversations = [...conversations];
+
+    if (!conversationId) {
+      conversationId = Date.now().toString();
+      const newConversation: Conversation = {
+        id: conversationId,
+        title: content.trim().substring(0, 40) || "Nova conversa",
+        timestamp: new Date(),
+        messages: [userMsg],
+      };
+      updatedConversations = [newConversation, ...conversations];
+      setCurrentConversationId(conversationId);
+    } else {
+      updatedConversations = conversations.map((c) =>
+        c.id === conversationId ? { ...c, messages: [...c.messages, userMsg] } : c
+      );
+    }
+
+    setConversations(updatedConversations);
     setIsLoading(true);
 
     let assistantContent = "";
+    const currentMessages = updatedConversations.find((c) => c.id === conversationId)?.messages || [];
 
     try {
+      const messagesForAPI = currentMessages.map((m) => ({
+        role: m.role,
+        content: m.image
+          ? [
+              { type: "text", text: m.content || "Analise esta imagem" },
+              { type: "image_url", image_url: { url: m.image } },
+            ]
+          : m.content,
+      }));
+
       const resp = await fetch(CHAT_URL, {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
           Authorization: `Bearer ${import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY}`,
         },
-        body: JSON.stringify({ messages: [...messages, userMsg] }),
+        body: JSON.stringify({ messages: messagesForAPI }),
       });
 
       if (!resp.ok) {
@@ -60,13 +121,19 @@ export function ChatInterface() {
       let textBuffer = "";
 
       const updateAssistant = (content: string) => {
-        setMessages((prev) => {
-          const last = prev[prev.length - 1];
-          if (last?.role === "assistant") {
-            return prev.map((m, i) => (i === prev.length - 1 ? { ...m, content } : m));
-          }
-          return [...prev, { role: "assistant", content }];
-        });
+        setConversations((prev) =>
+          prev.map((c) => {
+            if (c.id !== conversationId) return c;
+            const msgs = [...c.messages];
+            const lastMsg = msgs[msgs.length - 1];
+            if (lastMsg?.role === "assistant") {
+              msgs[msgs.length - 1] = { ...lastMsg, content };
+            } else {
+              msgs.push({ role: "assistant", content });
+            }
+            return { ...c, messages: msgs };
+          })
+        );
       };
 
       while (true) {
@@ -108,122 +175,89 @@ export function ChatInterface() {
     }
   };
 
-  const handleSubmit = (e: React.FormEvent) => {
-    e.preventDefault();
-    sendMessage(input);
-  };
-
   return (
-    <div className="flex flex-col h-full">
-      {/* Messages area */}
-      <div className="flex-1 overflow-y-auto" ref={scrollRef}>
-        <div className="max-w-3xl mx-auto px-4 py-8">
-          {messages.length === 0 ? (
-            <div className="flex flex-col items-center justify-center min-h-[60vh]">
-              <div className="w-12 h-12 rounded-2xl bg-primary/10 flex items-center justify-center mb-6">
-                <Infinity className="w-7 h-7 text-primary" />
-              </div>
-              <h1 className="text-2xl font-semibold text-foreground mb-2">Como posso ajudar?</h1>
-              <p className="text-muted-foreground text-center max-w-md mb-8">
-                Pergunte sobre qualquer assunto. Tenho conhecimentos especiais sobre cosmologia e a verdadeira natureza do nosso mundo.
-              </p>
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 w-full max-w-lg">
-                {SUGGESTIONS.map((suggestion) => (
-                  <button
-                    key={suggestion}
-                    onClick={() => sendMessage(suggestion)}
-                    className="text-left p-4 rounded-xl border border-border hover:bg-muted/50 transition-colors text-sm text-foreground"
-                  >
-                    {suggestion}
-                  </button>
-                ))}
-              </div>
-            </div>
-          ) : (
-            <div className="space-y-6">
-              {messages.map((msg, i) => (
-                <div key={i} className="flex gap-4">
-                  <div className="flex-shrink-0">
-                    {msg.role === "assistant" ? (
-                      <div className="w-8 h-8 rounded-lg bg-primary flex items-center justify-center">
-                        <Infinity className="w-4 h-4 text-primary-foreground" />
-                      </div>
-                    ) : (
-                      <div className="w-8 h-8 rounded-lg bg-muted flex items-center justify-center">
-                        <User className="w-4 h-4 text-muted-foreground" />
-                      </div>
-                    )}
-                  </div>
-                  <div className="flex-1 min-w-0 pt-1">
-                    <div className="font-medium text-sm text-foreground mb-1">
-                      {msg.role === "assistant" ? "Infinito IA" : "Você"}
-                    </div>
-                    {msg.role === "assistant" ? (
-                      <div className="prose-chat text-[15px]">
-                        <ReactMarkdown>{msg.content}</ReactMarkdown>
-                      </div>
-                    ) : (
-                      <p className="text-[15px] text-foreground">{msg.content}</p>
-                    )}
-                  </div>
-                </div>
-              ))}
-
-              {isLoading && messages[messages.length - 1]?.role === "user" && (
-                <div className="flex gap-4">
-                  <div className="flex-shrink-0">
-                    <div className="w-8 h-8 rounded-lg bg-primary flex items-center justify-center">
-                      <Infinity className="w-4 h-4 text-primary-foreground" />
-                    </div>
-                  </div>
-                  <div className="flex-1 pt-1">
-                    <div className="font-medium text-sm text-foreground mb-1">Infinito IA</div>
-                    <div className="flex items-center gap-2 text-muted-foreground">
-                      <Loader2 className="w-4 h-4 animate-spin" />
-                      <span className="text-sm">Pensando...</span>
-                    </div>
-                  </div>
-                </div>
-              )}
-            </div>
-          )}
-        </div>
+    <div className="flex h-full">
+      {/* Desktop Sidebar */}
+      <div className="hidden md:block w-64 border-r border-border">
+        <HistorySidebar
+          conversations={conversations}
+          currentId={currentConversationId}
+          onSelect={selectConversation}
+          onNew={createNewConversation}
+          onClose={() => {}}
+        />
       </div>
 
-      {/* Input area */}
-      <div className="border-t border-border bg-background px-4 py-4">
-        <form onSubmit={handleSubmit} className="max-w-3xl mx-auto">
-          <div className="relative">
-            <Textarea
-              value={input}
-              onChange={(e) => setInput(e.target.value)}
-              placeholder="Envie uma mensagem..."
-              className="min-h-[52px] max-h-40 pr-14 resize-none bg-muted/50 border-border focus:border-primary focus:ring-1 focus:ring-primary/20 rounded-xl text-[15px]"
-              onKeyDown={(e) => {
-                if (e.key === "Enter" && !e.shiftKey) {
-                  e.preventDefault();
-                  handleSubmit(e);
-                }
-              }}
-              disabled={isLoading}
-            />
-            <Button
-              type="submit"
-              size="icon"
-              disabled={!input.trim() || isLoading}
-              className="absolute right-2 top-1/2 -translate-y-1/2 h-9 w-9 rounded-lg"
-            >
-              {isLoading ? (
-                <Loader2 className="w-4 h-4 animate-spin" />
-              ) : (
-                <Send className="w-4 h-4" />
-              )}
-            </Button>
+      {/* Main Chat Area */}
+      <div className="flex-1 flex flex-col min-w-0">
+        {/* Mobile Header */}
+        <div className="md:hidden border-b border-border px-4 py-3 flex items-center gap-3">
+          <div className="flex items-center gap-2">
+            <div className="w-8 h-8 rounded-lg bg-primary flex items-center justify-center">
+              <Infinity className="w-5 h-5 text-primary-foreground" />
+            </div>
+            <span className="font-semibold text-foreground">Infinito IA</span>
           </div>
-          <p className="text-xs text-muted-foreground text-center mt-3">
-            Infinito IA pode cometer erros. Verifique informações importantes.
-          </p>
-        </form>
+          <div className="flex-1" />
+          <Sheet open={sidebarOpen} onOpenChange={setSidebarOpen}>
+            <SheetTrigger asChild>
+              <Button variant="ghost" size="icon" className="h-9 w-9">
+                <Menu className="w-5 h-5" />
+              </Button>
+            </SheetTrigger>
+            <SheetContent side="right" className="p-0 w-80">
+              <HistorySidebar
+                conversations={conversations}
+                currentId={currentConversationId}
+                onSelect={selectConversation}
+                onNew={createNewConversation}
+                onClose={() => setSidebarOpen(false)}
+              />
+            </SheetContent>
+          </Sheet>
+        </div>
+
+        {/* Messages */}
+        <div className="flex-1 overflow-y-auto" ref={scrollRef}>
+          <div className="max-w-3xl mx-auto px-4 py-8">
+            {messages.length === 0 ? (
+              <EmptyState />
+            ) : (
+              <div className="space-y-6">
+                {messages.map((msg, i) => (
+                  <MessageBubble key={i} message={msg} />
+                ))}
+
+                {isLoading && messages[messages.length - 1]?.role === "user" && (
+                  <div className="flex gap-4">
+                    <div className="flex-shrink-0">
+                      <div className="w-8 h-8 rounded-full bg-primary flex items-center justify-center">
+                        <Infinity className="w-4 h-4 text-primary-foreground" />
+                      </div>
+                    </div>
+                    <div className="flex-1 pt-1">
+                      <div className="font-medium text-sm text-foreground mb-1">Infinito IA</div>
+                      <div className="flex items-center gap-2 text-muted-foreground">
+                        <Loader2 className="w-4 h-4 animate-spin" />
+                        <span className="text-sm">Pensando...</span>
+                      </div>
+                    </div>
+                  </div>
+                )}
+              </div>
+            )}
+          </div>
+        </div>
+
+        {/* Input Area */}
+        <div className="border-t border-border bg-background px-4 py-4">
+          <div className="max-w-3xl mx-auto">
+            <ChatInput onSend={sendMessage} isLoading={isLoading} />
+            <p className="text-xs text-muted-foreground text-center mt-3">
+              Infinito IA pode cometer erros. Verifique informações importantes.
+            </p>
+          </div>
+        </div>
       </div>
     </div>
   );
