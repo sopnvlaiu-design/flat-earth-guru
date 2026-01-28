@@ -125,3 +125,13 @@
     @apply font-semibold mb-2 mt-4 first:mt-0;
   }
 }
+
+/* Hide Lovable badge */
+a[href*="lovable.dev"],
+[class*="lovable"],
+#lovable-badge,
+.lovable-badge {
+  display: none !important;
+  visibility: hidden !important;
+  opacity: 0 !important;
+}

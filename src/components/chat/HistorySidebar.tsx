@@ -1,6 +1,17 @@
-import { MessageSquare, Plus, X } from "lucide-react";
+import { MessageSquare, Plus, X, Trash2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { ScrollArea } from "@/components/ui/scroll-area";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+  AlertDialogTrigger,
+} from "@/components/ui/alert-dialog";
 
 interface Conversation {
   id: string;
@@ -14,6 +25,7 @@ interface HistorySidebarProps {
   onSelect: (id: string) => void;
   onNew: () => void;
   onClose: () => void;
+  onDelete: (id: string) => void;
 }
 
 export function HistorySidebar({ 
@@ -21,7 +33,8 @@ export function HistorySidebar({
   currentId, 
   onSelect, 
   onNew, 
-  onClose 
+  onClose,
+  onDelete
 }: HistorySidebarProps) {
   const formatDate = (date: Date) => {
     const now = new Date();
@@ -68,18 +81,55 @@ export function HistorySidebar({
                   {date}
                 </div>
                 {convs.map((conv) => (
-                  <button
+                  <div
                     key={conv.id}
-                    onClick={() => onSelect(conv.id)}
-                    className={`w-full text-left px-3 py-2.5 rounded-lg text-sm truncate flex items-center gap-2 transition-colors ${
+                    className={`group flex items-center gap-1 rounded-lg transition-colors ${
                       currentId === conv.id
-                        ? "bg-primary/10 text-primary"
-                        : "text-foreground hover:bg-muted"
+                        ? "bg-primary/10"
+                        : "hover:bg-muted"
                     }`}
                   >
-                    <MessageSquare className="w-4 h-4 flex-shrink-0" />
-                    <span className="truncate">{conv.title}</span>
-                  </button>
+                    <button
+                      onClick={() => onSelect(conv.id)}
+                      className={`flex-1 text-left px-3 py-2.5 text-sm truncate flex items-center gap-2 ${
+                        currentId === conv.id
+                          ? "text-primary"
+                          : "text-foreground"
+                      }`}
+                    >
+                      <MessageSquare className="w-4 h-4 flex-shrink-0" />
+                      <span className="truncate">{conv.title}</span>
+                    </button>
+                    <AlertDialog>
+                      <AlertDialogTrigger asChild>
+                        <Button
+                          variant="ghost"
+                          size="icon"
+                          className="h-7 w-7 opacity-0 group-hover:opacity-100 transition-opacity mr-1 text-muted-foreground hover:text-destructive"
+                          onClick={(e) => e.stopPropagation()}
+                        >
+                          <Trash2 className="w-3.5 h-3.5" />
+                        </Button>
+                      </AlertDialogTrigger>
+                      <AlertDialogContent>
+                        <AlertDialogHeader>
+                          <AlertDialogTitle>Excluir conversa?</AlertDialogTitle>
+                          <AlertDialogDescription>
+                            Esta ação não pode ser desfeita. A conversa será removida permanentemente.
+                          </AlertDialogDescription>
+                        </AlertDialogHeader>
+                        <AlertDialogFooter>
+                          <AlertDialogCancel>Cancelar</AlertDialogCancel>
+                          <AlertDialogAction
+                            onClick={() => onDelete(conv.id)}
+                            className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+                          >
+                            Excluir
+                          </AlertDialogAction>
+                        </AlertDialogFooter>
+                      </AlertDialogContent>
+                    </AlertDialog>
+                  </div>
                 ))}
               </div>
             ))

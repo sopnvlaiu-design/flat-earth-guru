@@ -63,6 +63,13 @@ export function ChatInterface() {
     setSidebarOpen(false);
   }, []);
 
+  const deleteConversation = useCallback((id: string) => {
+    setConversations((prev) => prev.filter((c) => c.id !== id));
+    if (currentConversationId === id) {
+      setCurrentConversationId(null);
+    }
+  }, [currentConversationId]);
+
   const sendMessage = async (content: string, image?: string) => {
     if ((!content.trim() && !image) || isLoading) return;
 
@@ -198,6 +205,7 @@ export function ChatInterface() {
           onSelect={selectConversation}
           onNew={createNewConversation}
           onClose={() => setDesktopSidebarOpen(false)}
+          onDelete={deleteConversation}
         />
       </div>
 
@@ -257,6 +265,7 @@ export function ChatInterface() {
                 onSelect={selectConversation}
                 onNew={createNewConversation}
                 onClose={() => setSidebarOpen(false)}
+                onDelete={deleteConversation}
               />
             </SheetContent>
           </Sheet>
@@ -299,7 +308,7 @@ export function ChatInterface() {
           <div className="max-w-3xl mx-auto">
             <ChatInput onSend={sendMessage} isLoading={isLoading} />
             <p className="text-xs text-muted-foreground text-center mt-3">
-              Infinito IA pode cometer erros. Verifique informações importantes.
+              Infinito IA - A liberdade da Inteligência Artificial
             </p>
           </div>
         </div>
