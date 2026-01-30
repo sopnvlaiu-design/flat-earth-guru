@@ -1,46 +1,31 @@
-import { useState, useRef, useCallback, useEffect } from "react";
+import { useState, useCallback } from "react";
 import { toast } from "sonner";
 
 export function useTextToSpeech() {
   const [isSpeaking, setIsSpeaking] = useState(false);
   const [voiceEnabled, setVoiceEnabled] = useState(false);
-  const [availableVoices, setAvailableVoices] = useState<SpeechSynthesisVoice[]>([]);
-  const utteranceRef = useRef<SpeechSynthesisUtterance | null>(null);
-
-  // Load available voices
-  useEffect(() => {
-    const loadVoices = () => {
-      const voices = speechSynthesis.getVoices();
-      setAvailableVoices(voices);
-    };
-
-    loadVoices();
-    speechSynthesis.onvoiceschanged = loadVoices;
-
-    return () => {
-      speechSynthesis.onvoiceschanged = null;
-    };
-  }, []);
 
   // Get best Portuguese voice
-  const getBestVoice = useCallback(() => {
+  const getBestVoice = useCallback((): SpeechSynthesisVoice | null => {
+    const voices = speechSynthesis.getVoices();
+    
     // Priority: Google PT-BR > Microsoft PT-BR > Any PT > Default
-    const priorities = [
-      (v: SpeechSynthesisVoice) => v.lang === "pt-BR" && v.name.includes("Google"),
-      (v: SpeechSynthesisVoice) => v.lang === "pt-BR" && v.name.includes("Microsoft"),
-      (v: SpeechSynthesisVoice) => v.lang === "pt-BR",
-      (v: SpeechSynthesisVoice) => v.lang.startsWith("pt"),
-    ];
+    const googlePtBr = voices.find(v => v.lang === "pt-BR" && v.name.includes("Google"));
+    if (googlePtBr) return googlePtBr;
+    
+    const msPtBr = voices.find(v => v.lang === "pt-BR" && v.name.includes("Microsoft"));
+    if (msPtBr) return msPtBr;
+    
+    const anyPtBr = voices.find(v => v.lang === "pt-BR");
+    if (anyPtBr) return anyPtBr;
+    
+    const anyPt = voices.find(v => v.lang.startsWith("pt"));
+    if (anyPt) return anyPt;
+    
+    return voices[0] || null;
+  }, []);
 
-    for (const priority of priorities) {
-      const voice = availableVoices.find(priority);
-      if (voice) return voice;
-    }
-
-    return availableVoices[0] || null;
-  }, [availableVoices]);
-
-  const speak = useCallback(async (text: string) => {
+  const speak = useCallback((text: string) => {
     if (!text || !voiceEnabled) return;
 
     // Check if speech synthesis is supported
@@ -71,7 +56,6 @@ export function useTextToSpeech() {
       setIsSpeaking(true);
 
       const utterance = new SpeechSynthesisUtterance(cleanText);
-      utteranceRef.current = utterance;
 
       // Set voice
       const voice = getBestVoice();
@@ -97,21 +81,6 @@ export function useTextToSpeech() {
         if (event.error !== "canceled") {
           toast.error("Erro ao reproduzir áudio");
         }
-      };
-
-      // Chrome bug workaround: resume speech synthesis if it gets stuck
-      const resumeInfinity = setInterval(() => {
-        if (!speechSynthesis.speaking) {
-          clearInterval(resumeInfinity);
-        } else {
-          speechSynthesis.pause();
-          speechSynthesis.resume();
-        }
-      }, 10000);
-
-      utterance.onend = () => {
-        clearInterval(resumeInfinity);
-        setIsSpeaking(false);
       };
 
       speechSynthesis.speak(utterance);
