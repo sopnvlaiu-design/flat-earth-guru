@@ -20,16 +20,24 @@ export default defineConfig(({ mode }) => ({
       registerType: "autoUpdate",
       includeAssets: ["favicon.ico", "icon-192.png", "icon-512.png", "icon-maskable-512.png"],
       manifest: {
-        name: "Infinito IA - Assistente Inteligente",
+        name: "Infinito IA",
         short_name: "Infinito IA",
-        description: "Seu assistente de inteligência artificial pessoal. Converse, pergunte e explore conhecimentos infinitos.",
-        theme_color: "#2563eb",
-        background_color: "#ffffff",
+        description: "A liberdade da Inteligência Artificial",
+        theme_color: "#000000",
+        background_color: "#000000",
         display: "standalone",
-        orientation: "portrait",
+        display_override: ["standalone", "fullscreen", "minimal-ui"],
+        orientation: "portrait-primary",
         scope: "/",
-        start_url: "/",
-        id: "/",
+        start_url: "/?standalone=true",
+        id: "infinito-ia",
+        launch_handler: {
+          client_mode: "navigate-existing"
+        },
+        handle_links: "preferred",
+        edge_side_panel: {
+          preferred_width: 400
+        },
         categories: ["productivity", "utilities", "education"],
         icons: [
           {
