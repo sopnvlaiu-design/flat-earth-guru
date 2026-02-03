@@ -146,14 +146,35 @@ export function ChatInterface() {
             ],
           };
         }
-        // Handle file uploads (non-image)
+        // Handle file uploads (non-image) - only decode text-based files
         if (m.file && !m.file.type.startsWith("image/")) {
+          const isTextFile = m.file.type.startsWith("text/") || 
+                            m.file.type === "application/json" ||
+                            m.file.name.endsWith(".md") ||
+                            m.file.name.endsWith(".txt") ||
+                            m.file.name.endsWith(".csv");
+          
+          if (isTextFile) {
+            try {
+              const decodedContent = atob(m.file.dataUrl.split(",")[1]);
+              return {
+                role: m.role,
+                content: `[Arquivo: ${m.file.name}]\n\n${decodedContent}\n\n${m.content}`,
+              };
+            } catch {
+              return {
+                role: m.role,
+                content: `[Arquivo enviado: ${m.file.name}] ${m.content}`,
+              };
+            }
+          }
+          // For binary files like PDF, just mention the file
           return {
             role: m.role,
-            content: `[Arquivo enviado: ${m.file.name}]\n\nConteúdo:\n${atob(m.file.dataUrl.split(",")[1])}\n\n${m.content}`,
+            content: `[Arquivo enviado: ${m.file.name} - tipo: ${m.file.type}] ${m.content}`,
           };
         }
-        return { role: m.role, content: m.content };
+        return { role: m.role, content: m.content || "." };
       });
 
       const resp = await fetch(CHAT_URL, {
