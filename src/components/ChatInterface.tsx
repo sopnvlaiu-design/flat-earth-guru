@@ -8,8 +8,28 @@ import { ChatInput } from "./chat/ChatInput";
 import { HistorySidebar } from "./chat/HistorySidebar";
 import { EmptyState } from "./chat/EmptyState";
 import { useTextToSpeech } from "@/hooks/useTextToSpeech";
+import { CreateMode } from "./chat/CreateModePopup";
 
-type Message = { role: "user" | "assistant"; content: string; image?: string };
+interface UploadedFile {
+  name: string;
+  type: string;
+  dataUrl: string;
+}
+
+type Message = { 
+  role: "user" | "assistant"; 
+  content: string; 
+  image?: string;
+  file?: UploadedFile;
+  generatedFiles?: GeneratedFile[];
+};
+
+interface GeneratedFile {
+  name: string;
+  content: string;
+  type: "code" | "html" | "pdf" | "image";
+  language?: string;
+}
 
 interface Conversation {
   id: string;
@@ -70,10 +90,23 @@ export function ChatInterface() {
     }
   }, [currentConversationId]);
 
-  const sendMessage = async (content: string, image?: string) => {
-    if ((!content.trim() && !image) || isLoading) return;
+  const sendMessage = async (content: string, options?: { 
+    image?: string; 
+    file?: UploadedFile;
+    createMode?: CreateMode;
+  }) => {
+    const image = options?.image;
+    const file = options?.file;
+    const createMode = options?.createMode;
+    
+    if ((!content.trim() && !image && !file) || isLoading) return;
 
-    const userMsg: Message = { role: "user", content: content.trim(), image };
+    const userMsg: Message = { 
+      role: "user", 
+      content: content.trim(), 
+      image,
+      file 
+    };
 
     let conversationId = currentConversationId;
     let updatedConversations = [...conversations];
@@ -101,15 +134,27 @@ export function ChatInterface() {
     const currentMessages = updatedConversations.find((c) => c.id === conversationId)?.messages || [];
 
     try {
-      const messagesForAPI = currentMessages.map((m) => ({
-        role: m.role,
-        content: m.image
-          ? [
+      // Build messages for API
+      const messagesForAPI = currentMessages.map((m) => {
+        // Handle images
+        if (m.image) {
+          return {
+            role: m.role,
+            content: [
               { type: "text", text: m.content || "Analise esta imagem" },
               { type: "image_url", image_url: { url: m.image } },
-            ]
-          : m.content,
-      }));
+            ],
+          };
+        }
+        // Handle file uploads (non-image)
+        if (m.file && !m.file.type.startsWith("image/")) {
+          return {
+            role: m.role,
+            content: `[Arquivo enviado: ${m.file.name}]\n\nConteúdo:\n${atob(m.file.dataUrl.split(",")[1])}\n\n${m.content}`,
+          };
+        }
+        return { role: m.role, content: m.content };
+      });
 
       const resp = await fetch(CHAT_URL, {
         method: "POST",
@@ -117,7 +162,10 @@ export function ChatInterface() {
           "Content-Type": "application/json",
           Authorization: `Bearer ${import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY}`,
         },
-        body: JSON.stringify({ messages: messagesForAPI }),
+        body: JSON.stringify({ 
+          messages: messagesForAPI,
+          createMode: createMode || undefined,
+        }),
       });
 
       if (!resp.ok) {

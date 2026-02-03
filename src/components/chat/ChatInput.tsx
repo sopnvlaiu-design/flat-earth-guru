@@ -1,18 +1,34 @@
 import { useState, useRef } from "react";
-import { Send, Loader2, Image, Mic, MicOff, X } from "lucide-react";
+import { Send, Loader2, Paperclip, Sparkles, Mic, MicOff, X } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
 import { toast } from "sonner";
+import { CreateMode, CreateModePopup } from "./CreateModePopup";
+import { CreationModeIndicator } from "./CreationModeIndicator";
+import { FilePreview } from "./FilePreview";
+
+interface UploadedFile {
+  name: string;
+  type: string;
+  dataUrl: string;
+}
 
 interface ChatInputProps {
-  onSend: (content: string, image?: string) => void;
+  onSend: (content: string, options?: { 
+    image?: string; 
+    file?: UploadedFile;
+    createMode?: CreateMode;
+  }) => void;
   isLoading: boolean;
 }
 
 export function ChatInput({ onSend, isLoading }: ChatInputProps) {
   const [input, setInput] = useState("");
-  const [image, setImage] = useState<string | null>(null);
+  const [uploadedFile, setUploadedFile] = useState<UploadedFile | null>(null);
   const [isRecording, setIsRecording] = useState(false);
+  const [createMode, setCreateMode] = useState<CreateMode>(null);
+  const [showCreatePopup, setShowCreatePopup] = useState(false);
+  
   const fileInputRef = useRef<HTMLInputElement>(null);
   const mediaRecorderRef = useRef<MediaRecorder | null>(null);
   const silenceTimeoutRef = useRef<NodeJS.Timeout | null>(null);
@@ -22,31 +38,51 @@ export function ChatInput({ onSend, isLoading }: ChatInputProps) {
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
-    if ((!input.trim() && !image) || isLoading) return;
-    onSend(input.trim(), image || undefined);
+    if ((!input.trim() && !uploadedFile) || isLoading) return;
+    
+    onSend(input.trim(), { 
+      image: uploadedFile?.type.startsWith("image/") ? uploadedFile.dataUrl : undefined,
+      file: uploadedFile || undefined,
+      createMode 
+    });
+    
     setInput("");
-    setImage(null);
+    setUploadedFile(null);
+    // Keep createMode active for continuous creation
   };
 
-  const handleImageSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
+  const handleFileSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
 
-    if (!file.type.startsWith("image/")) {
-      toast.error("Por favor, selecione uma imagem válida");
+    // Accept images and PDFs
+    const allowedTypes = ["image/", "application/pdf", "text/", "application/json"];
+    const isAllowed = allowedTypes.some(type => file.type.startsWith(type));
+
+    if (!isAllowed) {
+      toast.error("Formato não suportado. Use imagens, PDF ou arquivos de texto.");
       return;
     }
 
-    if (file.size > 5 * 1024 * 1024) {
-      toast.error("A imagem deve ter no máximo 5MB");
+    if (file.size > 10 * 1024 * 1024) {
+      toast.error("O arquivo deve ter no máximo 10MB");
       return;
     }
 
     const reader = new FileReader();
     reader.onload = (e) => {
-      setImage(e.target?.result as string);
+      setUploadedFile({
+        name: file.name,
+        type: file.type,
+        dataUrl: e.target?.result as string,
+      });
     };
     reader.readAsDataURL(file);
+    
+    // Reset input
+    if (fileInputRef.current) {
+      fileInputRef.current.value = "";
+    }
   };
 
   const checkSilence = () => {
@@ -104,7 +140,6 @@ export function ChatInput({ onSend, isLoading }: ChatInputProps) {
           audioContextRef.current.close();
         }
 
-        // Convert to base64 and send for transcription
         const reader = new FileReader();
         reader.onload = async () => {
           const base64Audio = (reader.result as string).split(",")[1];
@@ -125,8 +160,12 @@ export function ChatInput({ onSend, isLoading }: ChatInputProps) {
 
             const { text } = await response.json();
             if (text) {
-              onSend(text, image || undefined);
-              setImage(null);
+              onSend(text, { 
+                image: uploadedFile?.type.startsWith("image/") ? uploadedFile.dataUrl : undefined,
+                file: uploadedFile || undefined,
+                createMode 
+              });
+              setUploadedFile(null);
             }
           } catch (error) {
             console.error("Transcription error:", error);
@@ -168,79 +207,114 @@ export function ChatInput({ onSend, isLoading }: ChatInputProps) {
   };
 
   return (
-    <form onSubmit={handleSubmit} className="relative">
-      {image && (
-        <div className="mb-2 relative inline-block">
-          <img src={image} alt="Preview" className="h-20 rounded-lg border border-border" />
-          <Button
-            type="button"
-            variant="secondary"
-            size="icon"
-            className="absolute -top-2 -right-2 h-6 w-6 rounded-full"
-            onClick={() => setImage(null)}
-          >
-            <X className="w-3 h-3" />
-          </Button>
-        </div>
-      )}
-      <div className="relative flex items-end gap-2">
-        <div className="flex-1 relative">
-          <Textarea
-            value={input}
-            onChange={(e) => setInput(e.target.value)}
-            placeholder="Mensagem Infinito IA..."
-            className="min-h-[52px] max-h-40 pr-24 resize-none bg-muted/50 border-border focus:border-primary focus:ring-1 focus:ring-primary/20 rounded-2xl text-[15px] py-3.5"
-            onKeyDown={(e) => {
-              if (e.key === "Enter" && !e.shiftKey) {
-                e.preventDefault();
-                handleSubmit(e);
+    <>
+      <CreateModePopup
+        open={showCreatePopup}
+        onOpenChange={setShowCreatePopup}
+        onSelect={setCreateMode}
+      />
+      
+      <form onSubmit={handleSubmit} className="relative">
+        {/* Creation Mode Indicator */}
+        {createMode && (
+          <div className="mb-2">
+            <CreationModeIndicator mode={createMode} onClear={() => setCreateMode(null)} />
+          </div>
+        )}
+
+        {/* File Preview */}
+        {uploadedFile && (
+          <div className="mb-2">
+            <FilePreview file={uploadedFile} onRemove={() => setUploadedFile(null)} />
+          </div>
+        )}
+
+        <div className="relative flex items-end gap-2">
+          <div className="flex-1 relative">
+            <Textarea
+              value={input}
+              onChange={(e) => setInput(e.target.value)}
+              placeholder={
+                createMode === "programs" ? "Descreva o programa que deseja criar..." :
+                createMode === "sites" ? "Descreva o site que deseja criar..." :
+                createMode === "pdf" ? "Descreva o documento que deseja criar..." :
+                createMode === "images" ? "Descreva a imagem que deseja gerar..." :
+                "Mensagem Infinito IA..."
               }
-            }}
-            disabled={isLoading || isRecording}
-          />
-          <div className="absolute right-2 bottom-2 flex items-center gap-1">
-            <input
-              type="file"
-              ref={fileInputRef}
-              onChange={handleImageSelect}
-              accept="image/*"
-              className="hidden"
-            />
-            <Button
-              type="button"
-              variant="ghost"
-              size="icon"
-              className="h-8 w-8 rounded-lg text-muted-foreground hover:text-foreground"
-              onClick={() => fileInputRef.current?.click()}
+              className="min-h-[52px] max-h-40 pr-32 resize-none bg-muted/50 border-border focus:border-primary focus:ring-1 focus:ring-primary/20 rounded-2xl text-[15px] py-3.5 pl-4"
+              onKeyDown={(e) => {
+                if (e.key === "Enter" && !e.shiftKey) {
+                  e.preventDefault();
+                  handleSubmit(e);
+                }
+              }}
               disabled={isLoading || isRecording}
-            >
-              <Image className="w-4 h-4" />
-            </Button>
-            <Button
-              type="button"
-              variant="ghost"
-              size="icon"
-              className={`h-8 w-8 rounded-lg ${isRecording ? "text-destructive animate-pulse" : "text-muted-foreground hover:text-foreground"}`}
-              onClick={toggleRecording}
-              disabled={isLoading}
-            >
-              {isRecording ? <MicOff className="w-4 h-4" /> : <Mic className="w-4 h-4" />}
-            </Button>
-            <Button
-              type="submit"
-              size="icon"
-              disabled={(!input.trim() && !image) || isLoading || isRecording}
-              className="h-8 w-8 rounded-lg"
-            >
-              {isLoading ? (
-                <Loader2 className="w-4 h-4 animate-spin" />
-              ) : (
-                <Send className="w-4 h-4" />
-              )}
-            </Button>
+            />
+            <div className="absolute right-2 bottom-2 flex items-center gap-1">
+              <input
+                type="file"
+                ref={fileInputRef}
+                onChange={handleFileSelect}
+                accept="image/*,.pdf,.txt,.json,.md,.csv"
+                className="hidden"
+              />
+              
+              {/* Arquivos Button */}
+              <Button
+                type="button"
+                variant="ghost"
+                size="icon"
+                className="h-8 w-8 rounded-lg text-muted-foreground hover:text-foreground"
+                onClick={() => fileInputRef.current?.click()}
+                disabled={isLoading || isRecording}
+                title="Enviar arquivo"
+              >
+                <Paperclip className="w-4 h-4" />
+              </Button>
+
+              {/* Criar Button */}
+              <Button
+                type="button"
+                variant="ghost"
+                size="icon"
+                className={`h-8 w-8 rounded-lg ${createMode ? "text-primary" : "text-muted-foreground hover:text-foreground"}`}
+                onClick={() => setShowCreatePopup(true)}
+                disabled={isLoading || isRecording}
+                title="Criar conteúdo"
+              >
+                <Sparkles className="w-4 h-4" />
+              </Button>
+
+              {/* Mic Button */}
+              <Button
+                type="button"
+                variant="ghost"
+                size="icon"
+                className={`h-8 w-8 rounded-lg ${isRecording ? "text-destructive animate-pulse" : "text-muted-foreground hover:text-foreground"}`}
+                onClick={toggleRecording}
+                disabled={isLoading}
+                title={isRecording ? "Parar gravação" : "Gravar áudio"}
+              >
+                {isRecording ? <MicOff className="w-4 h-4" /> : <Mic className="w-4 h-4" />}
+              </Button>
+
+              {/* Send Button */}
+              <Button
+                type="submit"
+                size="icon"
+                disabled={(!input.trim() && !uploadedFile) || isLoading || isRecording}
+                className="h-8 w-8 rounded-lg"
+              >
+                {isLoading ? (
+                  <Loader2 className="w-4 h-4 animate-spin" />
+                ) : (
+                  <Send className="w-4 h-4" />
+                )}
+              </Button>
+            </div>
           </div>
         </div>
-      </div>
-    </form>
+      </form>
+    </>
   );
 }
