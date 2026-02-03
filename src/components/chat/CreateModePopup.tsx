@@ -3,6 +3,7 @@ import { Button } from "@/components/ui/button";
 import {
   Dialog,
   DialogContent,
+  DialogDescription,
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
@@ -52,6 +53,9 @@ export function CreateModePopup({ open, onOpenChange, onSelect }: CreateModePopu
       <DialogContent className="sm:max-w-md">
         <DialogHeader>
           <DialogTitle className="text-center text-xl">O que deseja criar?</DialogTitle>
+          <DialogDescription className="text-center text-sm">
+            Selecione o tipo de conteúdo para ativar o modo especialista
+          </DialogDescription>
         </DialogHeader>
         <div className="grid grid-cols-2 gap-3 py-4">
           {modes.map((mode) => (
